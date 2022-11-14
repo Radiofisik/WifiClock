@@ -1,0 +1,27 @@
+
+###
+get http://192.168.1.120/rest/settings
+
+
+###
+post http://192.168.1.120/rest/settings
+Content-Type: application/json
+
+{
+  "welcomeMessage": "hi kus'",
+  "dayBrightness": 5,
+  "nightBrightness": 0,
+  "startNightHour": 22,
+  "endNightHour": 7
+}
+
+
+
+###
+get http://192.168.1.120/rest/logger
+
+###
+post http://192.168.1.120/rest/logger
+Content-Type: application/json
+
+{}
