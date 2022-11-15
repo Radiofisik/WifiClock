@@ -25,7 +25,7 @@ const LogTab: FC = () => {
         aria-label="maximum height"
         placeholder="No logs"
         value={data.message}
-        style={{ width: 900 }}
+        style={{ width: "100%" }}
       />
 
       <ButtonRow mt={1}>
