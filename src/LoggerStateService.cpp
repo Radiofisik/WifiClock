@@ -23,7 +23,7 @@ StateUpdateResult LoggerState::update(JsonObject& root, LoggerState& state) {
 }
 
 void LoggerStateService::begin() {
-  logger.println("hi");
+  logger.println("\xEF\xF0\xE8\xE2\xE5\xF2");
   _state.logger = &logger;
 }
 
