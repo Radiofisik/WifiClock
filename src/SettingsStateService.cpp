@@ -51,7 +51,7 @@ void SettingsStateService::begin() {
               "display",        // Name of the task (for debugging)
               5000,             // Stack size (bytes)
               this,             // Parameter to pass
-              10,                // Task priority
+              10,               // Task priority
               NULL              // Task handle
   );
 }
@@ -77,7 +77,7 @@ void SettingsStateService::displayTask() {
     now = time(nullptr);
     tmtime = localtime(&now);
 
-    if ((tmtime->tm_sec <= 1) && (tmtime->tm_min == 0)) {  // Beginning of hour
+    if ((tmtime->tm_sec <= 1)) {  // Beginning of hour
       updateBrightness();
     }
 
@@ -107,22 +107,24 @@ void SettingsStateService::displayTask() {
       // logger.print(F(": "));
       // logger.println(payload.Temp);  // print the payload's value
 
-      // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
-      sprintf_P(str, PSTR("%0.1f\xB0"), payload.Temp);
-      logger.println(str);
-      // sprintf_P(str, PSTR("%2.1f"), payload.Temp);
+      if (payload.Humidity > 0) {
+        // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
+        sprintf_P(str, PSTR("%0.1f\xB0"), payload.Temp);
+        logger.println(str);
+        // sprintf_P(str, PSTR("%2.1f"), payload.Temp);
 
-      display.clear();
-      display.scroll(str, 50);
-      vTaskDelay(3000 / portTICK_PERIOD_MS);
-      display.noScroll();
-      // display.clear();
+        display.clear();
+        display.scroll(str, 50);
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        display.noScroll();
+        // display.clear();
+      }
+      else logger.println("err");
     }
 
     // payload.Temp = 1;
     // payload.Humidity = 1;
     // radio.write(&payload, sizeof(TransmitInterface), true);
-
   }
 
   vTaskDelete(NULL);
