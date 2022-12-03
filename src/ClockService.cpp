@@ -1,21 +1,26 @@
-#include "SettingsStateService.h"
+#include <ClockService.h>
 
-SPIClass SettingsStateService::vspi = SPIClass(VSPI);
+SPIClass ClockService::vspi = SPIClass(VSPI);
 
-SettingsStateService::SettingsStateService(AsyncWebServer* server, FS* fs, SecurityManager* securityManager) :
-    _httpEndpoint(SettingsState::read,
-                  SettingsState::update,
-                  this,
-                  server,
-                  SETTINGS_PATH,
-                  securityManager,
-                  AuthenticationPredicates::IS_AUTHENTICATED),
-    _fsPersistence(SettingsState::read, SettingsState::update, this, fs, APP_SETTINGS_FILE) {
-  addUpdateHandler([&](const String& originId) { onConfigUpdated(); }, false);
+ClockService::ClockService(AsyncMqttClient* mqttClient, SettingsService* settingsService) :
+    _mqttClient(mqttClient),
+    _mqttPubSub(ClockState::haRead, ClockState::haUpdate, this, mqttClient),
+    _settingsService(settingsService) {
+  // configure MQTT callback
+  _mqttClient->onConnect(std::bind(&ClockService::registerConfig, this));
+
+  // configure update handler for when the light settings change
+  _settingsService->addUpdateHandler([&](const String& originId) { onConfigUpdated(); }, false);
 }
 
-void SettingsStateService::begin() {
-  _fsPersistence.readFromFS();
+void ClockService::onConfigUpdated() {
+  updateBrightness();
+}
+
+void ClockService::begin() {
+  _state.humidity = 0;
+  _state.co2 = 0;
+  _state.temperature = 0;
 
   radio = RF24(GPIO_NUM_2, GPIO_NUM_4);  // using pin D2 for the CE pin, and pin D4 for the CSN pin)
 
@@ -41,8 +46,10 @@ void SettingsStateService::begin() {
   radio.startListening();             // put radio in RX mode
 
   display.init();
-  display.begin(_state.dayBrightness);
-  display.scroll(_state.welcomeMessage.c_str(), 50);
+  _settingsService->read([&](SettingsState& settings) {
+    display.begin(settings.dayBrightness);
+    display.scroll(settings.welcomeMessage.c_str(), 50);
+  });
   vTaskDelay(3000 / portTICK_PERIOD_MS);
   display.noScroll();
   display.clear();
@@ -56,22 +63,20 @@ void SettingsStateService::begin() {
   );
 }
 
-void SettingsStateService::onConfigUpdated() {
-  updateBrightness();
+void ClockService::displayTaskImpl(void* _this) {
+  ((ClockService*)_this)->displayTask();
 }
 
-void SettingsStateService::displayTaskImpl(void* _this) {
-  ((SettingsStateService*)_this)->displayTask();
+void ClockService::updateBrightness() {
+  _settingsService->read([&](SettingsState& settings) {
+    if (tmtime->tm_hour >= settings.endNightHour && tmtime->tm_hour < settings.startNightHour)
+      display.setBrightness(settings.dayBrightness);
+    else
+      display.setBrightness(settings.nightBrightness);
+  });
 }
 
-void SettingsStateService::updateBrightness() {
-  if (tmtime->tm_hour >= _state.endNightHour && tmtime->tm_hour < _state.startNightHour)
-    display.setBrightness(_state.dayBrightness);
-  else
-    display.setBrightness(_state.nightBrightness);
-}
-
-void SettingsStateService::displayTask() {
+void ClockService::displayTask() {
   for (;;) {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     now = time(nullptr);
@@ -118,8 +123,8 @@ void SettingsStateService::displayTask() {
         vTaskDelay(3000 / portTICK_PERIOD_MS);
         display.noScroll();
         // display.clear();
-      }
-      else logger.println("err");
+      } else
+        logger.println("err");
     }
 
     // payload.Temp = 1;
@@ -128,4 +133,33 @@ void SettingsStateService::displayTask() {
   }
 
   vTaskDelete(NULL);
+}
+
+void ClockService::registerConfig() {
+  //   if (!_mqttClient->connected()) {
+  //     return;
+  //   }
+  //   String configTopic;
+  //   String subTopic;
+  //   String pubTopic;
+
+  //   DynamicJsonDocument doc(256);
+  //   _lightMqttSettingsService->read([&](LightMqttSettings& settings) {
+  //     configTopic = settings.mqttPath + "/config";
+  //     subTopic = settings.mqttPath + "/set";
+  //     pubTopic = settings.mqttPath + "/state";
+  //     doc["~"] = settings.mqttPath;
+  //     doc["name"] = settings.name;
+  //     doc["unique_id"] = settings.uniqueId;
+  //   });
+  //   doc["cmd_t"] = "~/set";
+  //   doc["stat_t"] = "~/state";
+  //   doc["schema"] = "json";
+  //   doc["brightness"] = false;
+
+  //   String payload;
+  //   serializeJson(doc, payload);
+  //   _mqttClient->publish(configTopic.c_str(), 0, false, payload.c_str());
+
+  //   _mqttPubSub.configureTopics(pubTopic, subTopic);
 }

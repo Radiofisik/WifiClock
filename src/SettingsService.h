@@ -1,21 +1,12 @@
-#ifndef SettingsService
-#define SettingsService
+#pragma once
 
 #include <Logger.h>
 #include <HttpEndpoint.h>
 #include <FSPersistence.h>
-#include <time.h>
-#include "MAX7219.h"
-#include "RF24.h"
+
 
 #define SETTINGS_PATH "/rest/settings"
 #define APP_SETTINGS_FILE "/config/appSettings.json"
-
-typedef struct 
-{
-	float Temp;
-	float Humidity;
-} TransmitInterface;
 
 class SettingsState {
  public:
@@ -43,29 +34,13 @@ class SettingsState {
   }
 };
 
-class SettingsStateService : public StatefulService<SettingsState> {
+class SettingsService : public StatefulService<SettingsState> {
  public:
-  SettingsStateService(AsyncWebServer* server, FS* fs, SecurityManager* securityManager);
+  SettingsService(AsyncWebServer* server, FS* fs, SecurityManager* securityManager);
   void begin();
   void onConfigUpdated();
 
  private:
-  char str[12];
-  uint32_t t;
-  time_t now;
-  tm* tmtime;
-  static SPIClass vspi;
-  MAX7219<GPIO_NUM_5, 4, vspi> display;
-
-  TransmitInterface payload;
-  RF24 radio;
-
   HttpEndpoint<SettingsState> _httpEndpoint;
   FSPersistence<SettingsState> _fsPersistence;
-
-  static void displayTaskImpl(void* _this);
-  void displayTask();
-  void updateBrightness();
 };
-
-#endif
