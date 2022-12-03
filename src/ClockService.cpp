@@ -33,12 +33,12 @@ void ClockService::begin() {
 
   uint64_t address = 0x11223344AA;
 
-  radio.setAutoAck(true);
+  radio.setAutoAck(false);
   radio.setChannel(52);
   radio.setDataRate(RF24_2MBPS);
   radio.setPayloadSize(20);
   radio.enableDynamicPayloads();
-  radio.enableAckPayload();
+  radio.disableAckPayload();
 
   // radio.openWritingPipe(address);
   // set the RX address of the TX node into a RX pipe
@@ -61,6 +61,7 @@ void ClockService::begin() {
               10,               // Task priority
               NULL              // Task handle
   );
+  registerConfig();
 }
 
 void ClockService::displayTaskImpl(void* _this) {
@@ -105,24 +106,13 @@ void ClockService::displayTask() {
       radio.flush_rx();
       vTaskDelay(100 / portTICK_PERIOD_MS);
 
-      // logger.print(F("Received "));
-      // logger.print(bytes);  // print the size of the payload
-      // logger.print(F(" bytes on pipe "));
-      // logger.print(pipe);  // print the pipe number
-      // logger.print(F(": "));
-      // logger.println(payload.Temp);  // print the payload's value
-
       if (payload.Humidity > 0) {
-        // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
-        sprintf_P(str, PSTR("%0.1f\xB0"), payload.Temp);
+        _state.humidity = payload.Humidity;
+        _state.temperature = payload.Temp;
+        callUpdateHandlers("rf");
+        sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
         logger.println(str);
-        // sprintf_P(str, PSTR("%2.1f"), payload.Temp);
-
-        display.clear();
-        display.scroll(str, 50);
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
-        display.noScroll();
-        // display.clear();
+        displayTemperature();
       } else
         logger.println("err");
     }
@@ -135,31 +125,48 @@ void ClockService::displayTask() {
   vTaskDelete(NULL);
 }
 
+void ClockService::displayTemperature() {
+  // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
+  sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
+  display.clear();
+  display.scroll(str, 50);
+  vTaskDelay(3000 / portTICK_PERIOD_MS);
+  display.noScroll();
+  // display.clear();
+}
+
 void ClockService::registerConfig() {
-  //   if (!_mqttClient->connected()) {
-  //     return;
-  //   }
-  //   String configTopic;
-  //   String subTopic;
-  //   String pubTopic;
+  if (!_mqttClient->connected()) {
+    return;
+  }
+  String mqttPath;
+  String name;
+  String uniqueId;
 
-  //   DynamicJsonDocument doc(256);
-  //   _lightMqttSettingsService->read([&](LightMqttSettings& settings) {
-  //     configTopic = settings.mqttPath + "/config";
-  //     subTopic = settings.mqttPath + "/set";
-  //     pubTopic = settings.mqttPath + "/state";
-  //     doc["~"] = settings.mqttPath;
-  //     doc["name"] = settings.name;
-  //     doc["unique_id"] = settings.uniqueId;
-  //   });
-  //   doc["cmd_t"] = "~/set";
-  //   doc["stat_t"] = "~/state";
-  //   doc["schema"] = "json";
-  //   doc["brightness"] = false;
+  String configTopic;
+  String subTopic;
+  String pubTopic;
 
-  //   String payload;
-  //   serializeJson(doc, payload);
-  //   _mqttClient->publish(configTopic.c_str(), 0, false, payload.c_str());
+  DynamicJsonDocument doc(256);
 
-  //   _mqttPubSub.configureTopics(pubTopic, subTopic);
+  mqttPath = "myclock";
+  name = "clock";
+  uniqueId = "rfclockuniqId";
+
+  configTopic = mqttPath + "/config";
+  subTopic = mqttPath + "/set";
+  pubTopic = mqttPath + "/state";
+  doc["~"] = mqttPath;
+  doc["name"] = name;
+  doc["unique_id"] = uniqueId;
+
+  doc["cmd_t"] = "~/set";
+  doc["stat_t"] = "~/state";
+  doc["schema"] = "json";
+
+  String payload;
+  serializeJson(doc, payload);
+  _mqttClient->publish(configTopic.c_str(), 0, false, payload.c_str());
+
+  _mqttPubSub.configureTopics(pubTopic, subTopic);
 }

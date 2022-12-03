@@ -20,7 +20,7 @@ class ClockState {
 
   static void haRead(ClockState& state, JsonObject& root) {
     root["temperature"] = state.temperature;
-    root["humidity"] = state.temperature;
+    root["humidity"] = state.humidity;
     root["co2"] = state.co2;
   }
 
@@ -56,4 +56,5 @@ class ClockService : public StatefulService<ClockState> {
   static void displayTaskImpl(void* _this);
   void displayTask();
   void updateBrightness();
+  void displayTemperature();
 };
