@@ -22,6 +22,9 @@ void ClockService::begin() {
   _state.co2 = 0;
   _state.temperature = 0;
 
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
+  myMHZ19.begin(Serial2);            
+
   radio = RF24(GPIO_NUM_2, GPIO_NUM_4);  // using pin D2 for the CE pin, and pin D4 for the CSN pin)
 
   // initialize the transceiver on the SPI bus
@@ -87,6 +90,17 @@ void ClockService::displayTask() {
       updateBrightness();
     }
 
+    if(tmtime->tm_sec == 30){
+        _state.co2 = myMHZ19.getCO2();    
+        sprintf_P(str, PSTR("%.0f ppm"), _state.co2);
+        logger.println(str);
+        if(_state.co2 < 400){
+            sprintf_P(str, PSTR("err %d"), myMHZ19.errorCode);
+            logger.println(str);
+        }
+        displayCO2();
+    }
+
     sprintf_P(str, PSTR("%2u:%02u"), tmtime->tm_hour, tmtime->tm_min);
     t = (display.width() - display.strWidth(str)) / 2;
     display.beginUpdate();
@@ -128,6 +142,16 @@ void ClockService::displayTask() {
 void ClockService::displayTemperature() {
   // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
   sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
+  display.clear();
+  display.scroll(str, 50);
+  vTaskDelay(3000 / portTICK_PERIOD_MS);
+  display.noScroll();
+  // display.clear();
+}
+
+void ClockService::displayCO2() {
+  // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
+  sprintf_P(str, PSTR("%.0fp"), _state.co2);
   display.clear();
   display.scroll(str, 50);
   vTaskDelay(3000 / portTICK_PERIOD_MS);

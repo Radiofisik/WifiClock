@@ -6,6 +6,10 @@
 #include <time.h>
 #include "MAX7219.h"
 #include "RF24.h"
+#include "MHZ19.h"
+
+#define RXD2 16
+#define TXD2 17
 
 typedef struct {
   float Temp;
@@ -52,9 +56,11 @@ class ClockService : public StatefulService<ClockState> {
 
   TransmitInterface payload;
   RF24 radio;
+  MHZ19 myMHZ19;     
 
   static void displayTaskImpl(void* _this);
   void displayTask();
   void updateBrightness();
   void displayTemperature();
+  void displayCO2();
 };
