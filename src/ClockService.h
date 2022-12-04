@@ -53,6 +53,7 @@ class ClockService : public StatefulService<ClockState> {
   tm* tmtime;
   static SPIClass vspi;
   MAX7219<GPIO_NUM_5, 4, vspi> display;
+  int sensorTtl = 0;
 
   TransmitInterface payload;
   RF24 radio;
@@ -62,5 +63,9 @@ class ClockService : public StatefulService<ClockState> {
   void displayTask();
   void updateBrightness();
   void displayTemperature();
+  void getCO2();
+  void initRemoteSensor();
+  void getRemoteSensorData();
   void displayCO2();
+  void displayTime();
 };

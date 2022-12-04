@@ -23,30 +23,9 @@ void ClockService::begin() {
   _state.temperature = 0;
 
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
-  myMHZ19.begin(Serial2);            
+  myMHZ19.begin(Serial2);
 
-  radio = RF24(GPIO_NUM_2, GPIO_NUM_4);  // using pin D2 for the CE pin, and pin D4 for the CSN pin)
-
-  // initialize the transceiver on the SPI bus
-  if (!radio.begin()) {
-    Serial.println(F("radio hardware is not responding!!"));
-    while (1) {
-    }  // hold in infinite loop
-  }
-
-  uint64_t address = 0x11223344AA;
-
-  radio.setAutoAck(false);
-  radio.setChannel(52);
-  radio.setDataRate(RF24_2MBPS);
-  radio.setPayloadSize(20);
-  radio.enableDynamicPayloads();
-  radio.disableAckPayload();
-
-  // radio.openWritingPipe(address);
-  // set the RX address of the TX node into a RX pipe
-  radio.openReadingPipe(0, address);  // using pipe 0
-  radio.startListening();             // put radio in RX mode
+  initRemoteSensor();
 
   display.init();
   _settingsService->read([&](SettingsState& settings) {
@@ -71,6 +50,47 @@ void ClockService::displayTaskImpl(void* _this) {
   ((ClockService*)_this)->displayTask();
 }
 
+void ClockService::displayTask() {
+  for (;;) {
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    now = time(nullptr);
+    tmtime = localtime(&now);
+
+    if (sensorTtl > 0)
+      sensorTtl--;
+    else {
+      _state.temperature = 0;
+      _state.humidity = 0;
+    }
+
+    if ((tmtime->tm_sec <= 1)) {
+      updateBrightness();
+    }
+
+    if (tmtime->tm_sec % 10 == 0) {
+      getCO2();
+    }
+
+    if ((tmtime->tm_sec + 5) % 15 == 0) {
+      displayCO2();
+    }
+
+    if ((tmtime->tm_sec + 10) % 60 == 0) {
+      callUpdateHandlers("rf");  // send mqtt update
+    }
+
+    if ((tmtime->tm_sec + 20) % 15 == 0) {
+      if (sensorTtl > 0)
+        displayTemperature();
+    }
+
+    displayTime();
+    getRemoteSensorData();
+  }
+
+  vTaskDelete(NULL);
+}
+
 void ClockService::updateBrightness() {
   _settingsService->read([&](SettingsState& settings) {
     if (tmtime->tm_hour >= settings.endNightHour && tmtime->tm_hour < settings.startNightHour)
@@ -80,63 +100,29 @@ void ClockService::updateBrightness() {
   });
 }
 
-void ClockService::displayTask() {
-  for (;;) {
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    now = time(nullptr);
-    tmtime = localtime(&now);
+void ClockService::initRemoteSensor() {
+  radio = RF24(GPIO_NUM_2, GPIO_NUM_4);  // using pin D2 for the CE pin, and pin D4 for the CSN pin)
 
-    if ((tmtime->tm_sec <= 1)) {  // Beginning of hour
-      updateBrightness();
-    }
-
-    if(tmtime->tm_sec == 30){
-        _state.co2 = myMHZ19.getCO2();    
-        sprintf_P(str, PSTR("%.0f ppm"), _state.co2);
-        logger.println(str);
-        if(_state.co2 < 400){
-            sprintf_P(str, PSTR("err %d"), myMHZ19.errorCode);
-            logger.println(str);
-        }
-        displayCO2();
-    }
-
-    sprintf_P(str, PSTR("%2u:%02u"), tmtime->tm_hour, tmtime->tm_min);
-    t = (display.width() - display.strWidth(str)) / 2;
-    display.beginUpdate();
-    display.clear();
-    display.printStr(t, 0, str);
-    if (tmtime->tm_sec & 0x01) {
-      str[2] = '\0';
-      display.drawPattern(
-          t + display.strWidth(str) + display.FONT_GAP, 0, display.charWidth(':'), display.FONT_HEIGHT, (uint8_t)0);
-    }
-    display.endUpdate();
-
-    uint8_t pipe;
-    if (radio.available(&pipe)) {                       // is there a payload? get the pipe number that recieved it
-      uint8_t bytes = radio.getPayloadSize();           // get the size of the payload
-      radio.read(&payload, sizeof(TransmitInterface));  // fetch payload from FIFO
-      radio.flush_rx();
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-
-      if (payload.Humidity > 0) {
-        _state.humidity = payload.Humidity;
-        _state.temperature = payload.Temp;
-        callUpdateHandlers("rf");
-        sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
-        logger.println(str);
-        displayTemperature();
-      } else
-        logger.println("err");
-    }
-
-    // payload.Temp = 1;
-    // payload.Humidity = 1;
-    // radio.write(&payload, sizeof(TransmitInterface), true);
+  // initialize the transceiver on the SPI bus
+  if (!radio.begin()) {
+    Serial.println(F("radio hardware is not responding!!"));
+    while (1) {
+    }  // hold in infinite loop
   }
 
-  vTaskDelete(NULL);
+  uint64_t address = 0x11223344AA;
+
+  radio.setAutoAck(false);
+  radio.setChannel(52);
+  radio.setDataRate(RF24_2MBPS);
+  radio.setPayloadSize(20);
+  radio.enableDynamicPayloads();
+  radio.disableAckPayload();
+
+  // radio.openWritingPipe(address);
+  // set the RX address of the TX node into a RX pipe
+  radio.openReadingPipe(0, address);  // using pipe 0
+  radio.startListening();             // put radio in RX mode
 }
 
 void ClockService::displayTemperature() {
@@ -149,6 +135,16 @@ void ClockService::displayTemperature() {
   // display.clear();
 }
 
+void ClockService::getCO2() {
+  _state.co2 = myMHZ19.getCO2();
+  sprintf_P(str, PSTR("%.0f ppm"), _state.co2);
+  logger.println(str);
+  if (_state.co2 < 400) {
+    sprintf_P(str, PSTR("err %d"), myMHZ19.errorCode);
+    logger.println(str);
+  }
+}
+
 void ClockService::displayCO2() {
   // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
   sprintf_P(str, PSTR("%.0fp"), _state.co2);
@@ -157,6 +153,45 @@ void ClockService::displayCO2() {
   vTaskDelay(3000 / portTICK_PERIOD_MS);
   display.noScroll();
   // display.clear();
+}
+
+void ClockService::displayTime() {
+  sprintf_P(str, PSTR("%2u:%02u"), tmtime->tm_hour, tmtime->tm_min);
+  t = (display.width() - display.strWidth(str)) / 2;
+  display.beginUpdate();
+  display.clear();
+  display.printStr(t, 0, str);
+  if (tmtime->tm_sec & 0x01) {
+    str[2] = '\0';
+    display.drawPattern(
+        t + display.strWidth(str) + display.FONT_GAP, 0, display.charWidth(':'), display.FONT_HEIGHT, (uint8_t)0);
+  }
+  display.endUpdate();
+}
+
+void ClockService::getRemoteSensorData() {
+  vTaskDelay(10 / portTICK_PERIOD_MS);
+  uint8_t pipe;
+  if (radio.available(&pipe)) {                       // is there a payload? get the pipe number that recieved it
+    uint8_t bytes = radio.getPayloadSize();           // get the size of the payload
+    radio.read(&payload, sizeof(TransmitInterface));  // fetch payload from FIFO
+    radio.flush_rx();
+
+    if (payload.Humidity > 0) {
+      _state.humidity = payload.Humidity;
+      _state.temperature = payload.Temp;
+      sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
+      logger.println(str);
+      sensorTtl = 5 * 60;
+    } else
+      logger.println("err");
+
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+
+  // payload.Temp = 1;
+  // payload.Humidity = 1;
+  // radio.write(&payload, sizeof(TransmitInterface), true);
 }
 
 void ClockService::registerConfig() {
