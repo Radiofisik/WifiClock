@@ -24,6 +24,7 @@ void ClockService::begin() {
 
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   myMHZ19.begin(Serial2);
+  // myMHZ19.autoCalibration(false);
 
   initRemoteSensor();
 
@@ -56,6 +57,10 @@ void ClockService::displayTask() {
     now = time(nullptr);
     tmtime = localtime(&now);
 
+    if(errorCount>10){
+      initRemoteSensor();
+    }
+
     if (sensorTtl > 0)
       sensorTtl--;
     else {
@@ -63,7 +68,7 @@ void ClockService::displayTask() {
       _state.humidity = 0;
     }
 
-    if ((tmtime->tm_sec <= 1)) {
+    if (tmtime->tm_sec % 25 == 0) {
       updateBrightness();
     }
 
@@ -183,8 +188,10 @@ void ClockService::getRemoteSensorData() {
       sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
       logger.println(str);
       sensorTtl = 5 * 60;
+      errorCount = 0;
     } else
       logger.println("err");
+      errorCount ++;
 
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }

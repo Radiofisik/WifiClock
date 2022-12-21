@@ -54,6 +54,7 @@ class ClockService : public StatefulService<ClockState> {
   static SPIClass vspi;
   MAX7219<GPIO_NUM_5, 4, vspi> display;
   int sensorTtl = 0;
+  int errorCount = 0;
 
   TransmitInterface payload;
   RF24 radio;
