@@ -1,10 +1,13 @@
 #include <ClockService.h>
 
+// #define REMOTESENSOR
+
 SPIClass ClockService::vspi = SPIClass(VSPI);
 
 ClockService::ClockService(AsyncMqttClient* mqttClient, SettingsService* settingsService) :
     _mqttClient(mqttClient),
     _mqttPubSub(ClockState::haRead, ClockState::haUpdate, this, mqttClient),
+    _mqttTempHumSub(ClockState::updateTempHum, this, mqttClient),
     _settingsService(settingsService) {
   // configure MQTT callback
   _mqttClient->onConnect(std::bind(&ClockService::registerConfig, this));
@@ -22,11 +25,15 @@ void ClockService::begin() {
   _state.co2 = 0;
   _state.temperature = 0;
 
+  _mqttTempHumSub.setSubTopic("zigbee2mqtt/outsideTempHum");
+
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   myMHZ19.begin(Serial2);
   // myMHZ19.autoCalibration(false);
 
+#ifdef REMOTESENSOR
   initRemoteSensor();
+#endif
 
   display.init();
   _settingsService->read([&](SettingsState& settings) {
@@ -57,12 +64,14 @@ void ClockService::displayTask() {
     now = time(nullptr);
     tmtime = localtime(&now);
 
+#ifdef REMOTESENSOR
     if(errorCount>10){
       initRemoteSensor();
     }
+#endif
 
-    if (sensorTtl > 0)
-      sensorTtl--;
+    if (_state.sensorTtl > 0)
+      _state.sensorTtl--;
     else {
       _state.temperature = 0;
       _state.humidity = 0;
@@ -85,12 +94,14 @@ void ClockService::displayTask() {
     }
 
     if ((tmtime->tm_sec + 20) % 15 == 0) {
-      if (sensorTtl > 0)
+      if (_state.sensorTtl > 0)
         displayTemperature();
     }
 
     displayTime();
+#ifdef REMOTESENSOR
     getRemoteSensorData();
+#endif
   }
 
   vTaskDelete(NULL);
@@ -187,7 +198,7 @@ void ClockService::getRemoteSensorData() {
       _state.temperature = payload.Temp;
       sprintf_P(str, PSTR("%0.1f\xB0"), _state.temperature);
       logger.println(str);
-      sensorTtl = 5 * 60;
+      _state.sensorTtl = 5 * 60;
       errorCount = 0;
     } else
       logger.println("err");

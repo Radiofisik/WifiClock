@@ -21,6 +21,7 @@ class ClockState {
   float temperature;
   float humidity;
   float co2;
+  int sensorTtl;
 
   static void haRead(ClockState& state, JsonObject& root) {
     root["temperature"] = state.temperature;
@@ -28,8 +29,15 @@ class ClockState {
     root["co2"] = state.co2;
   }
 
-  static StateUpdateResult haUpdate(JsonObject& root, ClockState& lightState) {
+  static StateUpdateResult haUpdate(JsonObject& root, ClockState& state) {
     return StateUpdateResult::UNCHANGED;
+  }
+
+  static StateUpdateResult updateTempHum(JsonObject& root, ClockState& state) {
+    state.temperature = root["temperature"];
+    state.humidity = root["humidity"];
+    state.sensorTtl = 10 * 60;
+    return StateUpdateResult::CHANGED;
   }
 
  private:
@@ -45,6 +53,7 @@ class ClockService : public StatefulService<ClockState> {
  private:
   AsyncMqttClient* _mqttClient;
   MqttPubSub<ClockState> _mqttPubSub;
+  MqttSub<ClockState> _mqttTempHumSub;
   SettingsService* _settingsService;
 
   char str[12];
@@ -53,7 +62,6 @@ class ClockService : public StatefulService<ClockState> {
   tm* tmtime;
   static SPIClass vspi;
   MAX7219<GPIO_NUM_5, 4, vspi> display;
-  int sensorTtl = 0;
   int errorCount = 0;
 
   TransmitInterface payload;
