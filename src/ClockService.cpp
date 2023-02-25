@@ -162,12 +162,55 @@ void ClockService::getCO2() {
 }
 
 void ClockService::displayCO2() {
+   static const uint8_t CLOCK[] PROGMEM = {
+    0x1C, 0x22, 0x41, 0x4F, 0x49, 0x22, 0x1C
+  };
+
+  const uint8_t PPM[] PROGMEM = {
+    // 0b00001111,
+    // 0b11100101,
+    // 0b00100111,
+    // 0b11100000,
+    // 0b00101111,
+    // 0b11100101,
+    // 0b00000111,
+
+    0b00011111,
+    0b11000101,
+    0b01000111,
+    0b11000000,
+    0b01011111,
+    0b11000101,
+    0b00000111,
+
+  // 0b11110000,
+  // 0b01010000,
+  // 0b01110000,
+  // 0b00000000,
+
+  // 0b11110000,
+  // 0b01010000,
+  // 0b01110000,
+  // 0b00000000,
+
+  // 0b11110000,
+  // 0b00010000,
+  // 0b11110000,
+  // 0b00010000,
+  // 0b11110000,
+};
+
   // sprintf_P(str, PSTR("%0.1f\xB0 %0.1f%%"), payload.Temp, payload.Humidity);
-  sprintf_P(str, PSTR("%.0fp"), _state.co2);
+  sprintf_P(str, PSTR("%.0f"), _state.co2);
   display.clear();
-  display.scroll(str, 50);
+  int ppmWidth = 7;
+  int strwidth = display.strWidth(str);
+  int pad = (display.width() - strwidth - ppmWidth - 1)/2;
+  display.printStr(pad, 0, str);
+  // display.drawPattern(display.width() - 7, 0, 7, 8, CLOCK);
+  display.drawPattern(pad + strwidth + 1, 0, ppmWidth, 8, PPM);
   vTaskDelay(3000 / portTICK_PERIOD_MS);
-  display.noScroll();
+  // display.noScroll();
   // display.clear();
 }
 
